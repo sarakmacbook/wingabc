@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0d1117">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>USD/KHR Tracker</title>
+<link rel="manifest" href="/manifest.json">
+<link rel="apple-touch-icon" href="icon.png">
+<style>
+  * { box-sizing: border-box; }
+  body { margin:0; font-family: -apple-system, Segoe UI, Roboto, sans-serif;
+         background:#0d1117; color:#e6edf3; min-height:100vh;
+         display:flex; flex-direction:column; align-items:center; padding:24px 16px; }
+  h1 { font-size:1.1rem; color:#8b949e; font-weight:600; margin:8px 0 20px; }
+  .price { font-size:3.4rem; font-weight:700; letter-spacing:-1px; }
+  .chg  { font-size:1.2rem; font-weight:600; margin-top:4px; }
+  .up   { color:#16c784; } .down { color:#ea3943; }
+  .row  { display:flex; gap:16px; margin-top:24px; }
+  .card { background:#161b22; border:1px solid #30363d; border-radius:14px;
+          padding:14px 22px; text-align:center; min-width:120px; }
+  .lbl  { font-size:.75rem; color:#8b949e; text-transform:uppercase; }
+  .val  { font-size:1.35rem; font-weight:700; margin-top:4px; }
+  .src  { margin-top:18px; font-size:.85rem; color:#8b949e; }
+  .btn  { margin-top:22px; background:#238636; color:#fff; border:0; border-radius:10px;
+          padding:12px 20px; font-size:1rem; font-weight:600; cursor:pointer; }
+  #chart { margin-top:24px; width:100%; max-width:640px; height:220px; }
+  .err { color:#ea3943; margin-top:12px; font-size:.9rem; }
+</style>
+</head>
+<body>
+<h1>🇰🇭 USD / KHR — LIVE</h1>
+<div class="price" id="mid">—</div>
+<div class="chg" id="chg"></div>
+<div class="row">
+  <div class="card"><div class="lbl">Buy</div><div class="val" id="buy">—</div></div>
+  <div class="card"><div class="lbl">Sell</div><div class="val" id="sell">—</div></div>
+</div>
+<div class="src" id="src"></div>
+<div class="err" id="err"></div>
+<button class="btn" onclick="notif()">🔔 Enable notifications</button>
+<canvas id="chart"></canvas>
+
+<script>
+const pts = [];
+let first = null, prevMid = null, notified = false;
+
+function fmt(n){ return n.toLocaleString('en-US',{minimumFractionDigits:2, maximumFractionDigits:2}); }
+
+async function tick(){
+  try{
+    const r = await fetch('/api/price'); const d = await r.json();
+    document.getElementById('err').textContent = d.error || '';
+    if(!d.rate) return;
+    const m = (d.rate.buy + d.rate.sell)/2;
+    if(first===null) first = m;
+    document.getElementById('mid').textContent = fmt(m);
+    document.getElementById('buy').textContent  = fmt(d.rate.buy);
+    document.getElementById('sell').textContent = fmt(d.rate.sell);
+    document.getElementById('src').textContent  = 'Source: ' + d.rate.source + ' • ' + new Date().toLocaleTimeString();
+    const c = document.getElementById('chg');
+    const diff = m - first;
+    c.textContent = (diff>=0?'▲ +':'▼ ') + fmt(Math.abs(diff));
+    c.className = 'chg ' + (diff>=0?'up':'down');
+    document.getElementById('mid').className = 'price ' + (diff>=0?'up':'down');
+    // browser notification on move >= 5 KHR (once)
+    if(prevMid!==null && Math.abs(m-prevMid)>=5 && Notification.permission==='granted'){
+      new Notification('USD/KHR moved ' + (m-prevMid>=0?'+':'') + fmt(m-prevMid) + ' KHR',
+        {body:'Buy '+fmt(d.rate.buy)+' / Sell '+fmt(d.rate.sell)});
+    }
+    prevMid = m;
+    pts.push(m); if(pts.length>300) pts.shift();
+    draw();
+  }catch(e){ document.getElementById('err').textContent = 'Connection error'; }
+}
+function draw(){
+  const cv = document.getElementById('chart'); const ctx = cv.getContext('2d');
+  cv.width = cv.clientWidth * devicePixelRatio; cv.height = cv.clientHeight * devicePixelRatio;
+  ctx.clearRect(0,0,cv.width,cv.height);
+  if(pts.length<2) return;
+  const min = Math.min(...pts), max = Math.max(...pts), span = (max-min)||1;
+  const up = pts[pts.length-1] >= pts[0]; ctx.strokeStyle = up ? '#16c784' : '#ea3943';
+  ctx.lineWidth = 2*devicePixelRatio; ctx.beginPath();
+  pts.forEach((p,i)=>{ const x = i/(pts.length-1)*cv.width;
+    const y = cv.height - (p-min)/span*cv.height*0.9 - cv.height*0.05;
+    i?ctx.lineTo(x,y):ctx.moveTo(x,y); });
+  ctx.stroke();
+}
+async function notif(){
+  if(!('Notification' in window)){ alert('Notifications not supported on this browser'); return; }
+  const p = await Notification.requestPermission();
+  alert(p==='granted' ? '🔔 Notifications ON — keep this tab open (or add to home screen).' : 'Permission: '+p);
+}
+if('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js');
+tick(); setInterval(tick, 1000);
+</script>
+</body>
+</html>
