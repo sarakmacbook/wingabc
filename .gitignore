@@ -1,0 +1,11 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Runtime data (rates database, settings, charts)
+data/
+
+# Env secrets
+.env
