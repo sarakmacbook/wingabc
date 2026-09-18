@@ -9,10 +9,22 @@ CoinMarketCap-style USD/KHR tracking with a Telegram bot + home-screen web app (
 
 Wing is always tried first. If Wing is down/unreachable, the bot automatically switches to ACLEDA and tells you; when Wing recovers it switches back. If your host's egress firewall blocks the bank host itself, each bank is also fetched via a reader mirror (`r.jina.ai/<page-url>`) — still for that same bank only, so the Wing → ACLEDA priority never changes.
 
-## Setup
+## One-click install
+```bash
+curl -fsSL https://raw.githubusercontent.com/sarakmacbook/wingabc/main/install.sh | bash
+```
+That's it — it finds Python 3, creates a `.venv`, installs all packages, checks the imports, and creates `.env` from the template. Already have it cloned locally? Just run `./install.sh` instead.
+
+Then open `.env`, paste your token from [@BotFather](https://t.me/BotFather), and start the bot:
+```bash
+source .venv/bin/activate
+python bot.py
+```
+
+## Manual setup
 ```bash
 pip install -r requirements.txt
-cp .env.example .env       # paste your token from @BotFather
+cp env.example .env       # paste your token from @BotFather
 python bot.py
 ```
 Then open Telegram, send `/start` to your bot. It will **ask you where to store price data**:
