@@ -12,6 +12,8 @@ Commands:
   /status         tracker & storage status
 """
 import os
+import re
+import sys
 import json
 import time
 import logging
@@ -344,10 +346,112 @@ async def calc_rate(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     return ConversationHandler.END
 
 
+# ---------------- token onboarding ----------------
+# A bot token looks like  1234567890:AAEx4gKz...  (id:secret)
+_ANY_TOKEN = re.compile(r"\d{6,12}:[A-Za-z0-9_-]{25,64}")
+_PLACEHOLDER_PREFIX = "1234567890:"          # the fake token in env.example
+_ENV_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
+
+
+def _describe(me) -> str:
+    return f"{me.get('first_name', 'Bot')} (@{me.get('username', '?')})"
+
+
+def check_token(token: str):
+    """Verify a bot token with Telegram. Returns (bot_info, None) or (None, error)."""
+    try:
+        import requests as _rq
+        data = _rq.get(f"https://api.telegram.org/bot{token}/getMe", timeout=10).json()
+    except Exception as e:
+        return None, f"network: could not reach Telegram ({type(e).__name__})"
+    if data.get("ok"):
+        return data["result"], None
+    return None, data.get("description", "Telegram rejected this token")
+
+
+def save_token(token: str) -> str:
+    """Write BOT_TOKEN into .env next to bot.py, replacing any old line."""
+    lines = []
+    if os.path.exists(_ENV_FILE):
+        with open(_ENV_FILE, encoding="utf-8") as f:
+            lines = [l for l in f.read().splitlines()
+                     if not re.match(r"\s*#?\s*BOT_TOKEN\s*=", l)]
+    lines.append(f"BOT_TOKEN={token}")
+    with open(_ENV_FILE, "w", encoding="utf-8") as f:
+        f.write("\n".join(lines) + "\n")
+    return _ENV_FILE
+
+
+def prompt_for_token():
+    """Ask the user for a bot token, verify it live, save it to .env.
+
+    Returns the token, or None if the terminal isn't interactive / user gave up.
+    """
+    if not sys.stdin or not sys.stdin.isatty():
+        return None
+    print("\nNo usable BOT_TOKEN found. Get one free in about a minute:")
+    print("  1. open  https://t.me/BotFather  in Telegram")
+    print("  2. send /newbot and follow the steps")
+    print("  3. copy the token it gives you (looks like 1234567890:AAEx4g...)")
+    for _ in range(5):
+        try:
+            raw = input("\nPaste the token here (Enter to cancel): ").strip()
+        except (EOFError, KeyboardInterrupt):
+            return None
+        if not raw:
+            return None
+        m = _ANY_TOKEN.search(raw)          # tolerate pasting extra text around it
+        if not m:
+            print("✗ That doesn't look like a bot token — copy the whole thing from @BotFather.")
+            continue
+        token = m.group(0)
+        me, err = check_token(token)
+        if me:
+            path = save_token(token)
+            print(f"✓ Verified!  Bot: {_describe(me)}")
+            print(f"✓ Saved to {path}")
+            return token
+        if err.startswith("network"):
+            path = save_token(token)
+            print(f"⚠ {err} — saved to {path} anyway; Telegram will re-check it on connect.")
+            return token
+        print(f"✗ Telegram rejected it: {err}")
+        print("  (Copy the FULL token from @BotFather's message, nothing else.)")
+    return None
+
+
+def _resolve_token() -> str:
+    """Get a working token: env var → saved .env → interactive prompt."""
+    token = (os.environ.get("BOT_TOKEN") or "").strip()
+    if not token or token.startswith(_PLACEHOLDER_PREFIX):
+        token = prompt_for_token() or ""
+        if not token:
+            raise SystemExit(
+                "\nSetup cancelled. To try again:\n"
+                "  python bot.py          (it will ask for the token and save it)\n"
+                f"  or set BOT_TOKEN in {_ENV_FILE}\n"
+                "  Get a free token from @BotFather:  https://t.me/BotFather"
+            )
+        os.environ["BOT_TOKEN"] = token
+        return token
+    # token exists — check it once so problems are obvious immediately
+    me, err = check_token(token)
+    if me:
+        log.info("Token verified — bot: %s", _describe(me))
+    elif err.startswith("network"):
+        log.warning("%s — starting anyway.", err)
+    else:
+        log.warning("Telegram rejected BOT_TOKEN: %s", err)
+        new = prompt_for_token()
+        if not new:
+            raise SystemExit(f"Fix BOT_TOKEN in {_ENV_FILE} and run again.")
+        token = new
+        os.environ["BOT_TOKEN"] = token
+    return token
+
+
 def main():
-    token = os.environ.get("BOT_TOKEN")
-    if not token:
-        raise SystemExit("Set BOT_TOKEN in .env (get one from @BotFather)")
+    token = _resolve_token()
     app = Application.builder().token(token).post_init(_capture_loop).build()
 
     setup_conv = ConversationHandler(
