@@ -69,7 +69,26 @@ def get_store():
 _tracker = {"running": False, "thread": None, "stop": threading.Event(),
             "last": None, "errors": 0}
 
+# python-telegram-bot v20+ runs the bot on its own asyncio loop; cross-thread
+# sends must be scheduled onto that loop (app._loop no longer exists).
+_loop_ref = {"loop": None}
+
+
+async def _capture_loop(app):
+    _loop_ref["loop"] = asyncio.get_running_loop()
+
+
+def _send(chat_id, text):
+    """Schedule a cross-thread Telegram send onto the bot's running loop."""
+    loop = _loop_ref.get("loop")
+    if not loop:
+        return
+    asyncio.run_coroutine_threadsafe(
+        _loop_ref["app"].bot.send_message(chat_id=chat_id, text=text), loop)
+
+
 def tracker_loop(app):
+    _loop_ref["app"] = app
     st = get_store()
     s = load_settings()
     interval = max(1, int(s.get("interval", 1)))
@@ -86,23 +105,24 @@ def tracker_loop(app):
                 mid = (r["buy"] + r["sell"]) / 2
                 if th and alert_base is not None and abs(mid - alert_base) >= th:
                     for cid in s.get("chat_ids", []):
-                        asyncio.run_coroutine_threadsafe(
-                            app.bot.send_message(
-                                chat_id=cid,
-                                text=f"🚨 USD/KHR moved {mid - alert_base:+,.2f} KHR!\n"
-                                     f"Buy: {r['buy']:,.2f} | Sell: {r['sell']:,.2f}\n"
-                                     f"Source: {r['source']}"),
-                            app._loop)
+                        _send(cid, f"🚨 USD/KHR moved {mid - alert_base:+,.2f} KHR!\n"
+                                  f"Buy: {r['buy']:,.2f} | Sell: {r['sell']:,.2f}\n"
+                                  f"Source: {r['source']}")
                     s["alert_base"] = mid
                     save_settings(s)
-            # fallback-source notification (wing down -> acleda)
+            # fallback-source notification (Wing down -> ACLEDA, etc.)
             if s.get("last_source") and s["last_source"] != r["source"] and s.get("notify"):
+                down = s["last_source"]
+                now = r["source"]
+                if down.startswith("WING") and now.startswith("ACLEDA"):
+                    msg = (f"⚠️ Wing Bank is down/unreachable — switched to "
+                           f"ACLEDA Bank.\nBuy: {r['buy']:,.2f} | Sell: {r['sell']:,.2f}")
+                elif now.startswith("WING"):
+                    msg = f"✅ Wing Bank is back — rate from Wing again."
+                else:
+                    msg = f"⚠️ Source changed: {down} → {now}"
                 for cid in s.get("chat_ids", []):
-                    asyncio.run_coroutine_threadsafe(
-                        app.bot.send_message(
-                            chat_id=cid,
-                            text=f"⚠️ Source changed: {s['last_source']} → {r['source']}"),
-                        app._loop)
+                    _send(cid, msg)
             s["last_source"] = r["source"]
         except Exception as e:
             _tracker["errors"] += 1
@@ -328,7 +348,7 @@ def main():
     token = os.environ.get("BOT_TOKEN")
     if not token:
         raise SystemExit("Set BOT_TOKEN in .env (get one from @BotFather)")
-    app = Application.builder().token(token).build()
+    app = Application.builder().token(token).post_init(_capture_loop).build()
 
     setup_conv = ConversationHandler(
         entry_points=[CommandHandler("start", start)],

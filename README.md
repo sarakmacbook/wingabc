@@ -7,7 +7,7 @@ CoinMarketCap-style USD/KHR tracking with a Telegram bot + home-screen web app (
 2. **ACLEDA Bank** — https://www.acledabank.com.kh/kh/eng/ps_cmforeignexchange?t=p
 3. **National Bank of Cambodia** — final fallback
 
-If Wing is down, the bot automatically switches to ACLEDA and tells you.
+Wing is always tried first. If Wing is down/unreachable, the bot automatically switches to ACLEDA and tells you; when Wing recovers it switches back. If your host's egress firewall blocks the bank host itself, each bank is also fetched via a reader mirror (`r.jina.ai/<page-url>`) — still for that same bank only, so the Wing → ACLEDA priority never changes.
 
 ## Setup
 ```bash
@@ -35,7 +35,7 @@ Then it asks for the interval. Use `1` for every second like CoinMarketCap.
 
 ## Web app (home screen on BOTH devices)
 ```bash
-python web/app.py        # serves on port 5000
+python app.py        # serves on port 5000
 ```
 - **Android (Chrome):** open `http://<computer-ip>:5000` → menu ⋮ → **Add to Home screen** → allow notifications.
 - **iPhone (Safari):** open the same URL → Share → **Add to Home Screen**. Notifications on iOS need the tab open (real iOS push needs a paid Apple setup) — **use the Telegram bot for reliable iOS notifications instead**.
