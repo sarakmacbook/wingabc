@@ -17,7 +17,14 @@ cd wingabc
 ```
 Already have it cloned locally? Just run `./install.sh` from the repo folder instead. Re-running `install.sh` later also updates the code (`git pull`) before reinstalling.
 
-Then open `.env`, paste your token from [@BotFather](https://t.me/BotFather), and start the bot:
+The installer **asks you for your bot token, verifies it live against Telegram, saves it to `.env`**, shows you a summary (bot name + a live exchange-rate check), and can start the bot right away. Just paste the token when prompted — get one free from [@BotFather](https://t.me/BotFather) (`/newbot`). Skipped the prompt? `python bot.py` will ask again.
+```bash
+curl -fsSL https://raw.githubusercontent.com/sarakmacbook/wingabc/main/install.sh | bash
+cd wingabc
+```
+Already have it cloned locally? Just run `./install.sh` from the repo folder instead. Re-running `install.sh` later also updates the code (`git pull`) before reinstalling.
+
+Prefer to set the token by hand? Edit `.env` and set `BOT_TOKEN=...`, then start the bot:
 ```bash
 source .venv/bin/activate
 python bot.py
@@ -26,8 +33,7 @@ python bot.py
 ## Manual setup
 ```bash
 pip install -r requirements.txt
-cp env.example .env       # paste your token from @BotFather
-python bot.py
+python bot.py            # asks for your token on first run, verifies it, saves it to .env
 ```
 Then open Telegram, send `/start` to your bot. It will **ask you where to store price data**:
 - SQLite file (recommended, default `data/khr_usd.db`)
