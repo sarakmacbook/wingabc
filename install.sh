@@ -1,20 +1,60 @@
 #!/usr/bin/env bash
 # ============================================================
 #  KHR/USD Tracker Bot — one-click install
-#  Usage:  ./install.sh     (or: curl -fsSL <url>/install.sh | bash)
+#  One-liner (fresh server):  curl -fsSL <url>/install.sh | bash
+#  Local clone:                ./install.sh
 # ============================================================
 set -euo pipefail
-cd "$(dirname "$0")"
+
+REPO_URL="https://github.com/sarakmacbook/wingabc.git"
+APP_DIR="wingabc"
 
 echo "================================================="
 echo "  KHR/USD Tracker Bot — one-click install"
 echo "================================================="
 
+# --- 0. Make sure we are inside the project -----------------------------
+# When piped via `curl ... | bash`, $0 is "bash" (not a file), so there
+# is no script directory — the repo must be cloned first.
+if [ -n "${0:-}" ] && [ -f "${0:-}" ]; then
+  cd "$(dirname "$0")"
+fi
+
+if [ ! -f requirements.txt ] || [ ! -f bot.py ]; then
+  if ! command -v git >/dev/null 2>&1; then
+    echo "ERROR: git not found, and the project files aren't here."
+    echo "Install git first, then re-run this script:"
+    echo "   Ubuntu / Debian / Raspberry Pi:  sudo apt update && sudo apt install -y git"
+    echo "   macOS (Homebrew):                brew install git"
+    exit 1
+  fi
+  if [ -d "$APP_DIR/.git" ]; then
+    echo ">> Found existing $APP_DIR/ — updating ..."
+    cd "$APP_DIR"
+    git pull --ff-only || true
+  elif [ -d "$APP_DIR" ]; then
+    echo ">> Found existing $APP_DIR/ (not a git clone) — using it."
+    cd "$APP_DIR"
+  else
+    echo ">> Cloning $REPO_URL ..."
+    git clone "$REPO_URL" "$APP_DIR"
+    cd "$APP_DIR"
+  fi
+fi
+
+if [ ! -f requirements.txt ] || [ ! -f bot.py ]; then
+  echo "ERROR: still can't find requirements.txt / bot.py in $(pwd)."
+  echo "Clone the repo manually and run ./install.sh from inside it:"
+  echo "   git clone $REPO_URL && cd $APP_DIR && ./install.sh"
+  exit 1
+fi
+echo ">> Project dir: $(pwd)"
+
 # --- 1. Find Python 3 ------------------------------------------------
 PYTHON="$(command -v python3 || command -v python || true)"
 if [ -z "$PYTHON" ]; then
   echo "ERROR: Python 3 not found. Install it first, then re-run this script:"
-  echo "   Ubuntu / Debian / Raspberry Pi:  sudo apt install python3 python3-venv"
+  echo "   Ubuntu / Debian / Raspberry Pi:  sudo apt update && sudo apt install -y python3 python3-venv"
   echo "   macOS (Homebrew):                brew install python"
   exit 1
 fi
@@ -24,11 +64,15 @@ echo ">> Python: $($PYTHON --version 2>&1)"
 VENV=""
 if [ -d .venv ]; then
   VENV=".venv"
-elif $PYTHON -m venv --help >/dev/null 2>&1; then
-  echo ">> Creating virtual environment in .venv ..."
-  $PYTHON -m venv .venv && VENV=".venv"
+elif "$PYTHON" -m venv .venv >/dev/null 2>&1; then
+  echo ">> Created virtual environment in .venv"
+  VENV=".venv"
 else
-  echo ">> venv not available — installing into system Python instead."
+  rm -rf .venv
+  echo ">> Could not create a virtual environment."
+  echo "   On Ubuntu/Debian this usually means python3-venv is missing:"
+  echo "     sudo apt update && sudo apt install -y python3-venv"
+  echo "   Then re-run this script. Falling back to system Python for now."
 fi
 
 if [ -n "$VENV" ]; then
@@ -63,6 +107,7 @@ echo "  1) Open .env and set your Telegram bot token"
 echo "     (get one free from @BotFather in Telegram)."
 echo "  2) Start the bot:"
 if [ -n "$VENV" ]; then
+  echo "       cd $(pwd)"
   echo "       source .venv/bin/activate"
   echo "       python bot.py"
   echo "     (or simply: .venv/bin/python bot.py)"
